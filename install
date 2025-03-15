@@ -1,0 +1,178 @@
+#!/data/data/com.termux/files/usr/bin/bash
+
+# Define Colors
+RED='\033[1;31m'
+GREEN='\033[1;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[1;34m'
+CYAN='\033[1;36m'
+RESET='\033[0m'
+
+# Decorative Banner Function
+banner() {
+  echo -e "${BLUE}============================================${RESET}"
+  echo -e "${YELLOW}$1${RESET}"
+  echo -e "${BLUE}============================================${RESET}"
+}
+
+success() {
+  echo -e "${GREEN}[✔] $1${RESET}"
+}
+
+error() {
+  echo -e "${RED}[✘] $1${RESET}"
+}
+
+banner "📂 Setting Up Termux Storage..."
+if [ -d "$HOME/storage" ]; then
+    success "Storage is already set up!"
+else
+    termux-setup-storage
+    sleep 3
+    [ -d "$HOME/storage" ] && success "Storage setup completed!" || error "Storage setup failed!"
+fi
+# Step 1: Update and Upgrade
+banner "Updating and Upgrading Termux..."
+pkg update -y && pkg upgrade -y && success "System updated!" || error "Update failed!"
+
+# Step 2: Install necessary repositories
+banner "Installing Extra Repositories..."
+pkg install tur-repo root-repo x11-repo -y && success "Repositories installed!" || error "Repo installation failed!"
+
+# Step 3: Update again after adding repos
+pkg update -y && success "Repositories updated!" || error "Repository update failed!"
+
+# Step 4: Install required packages
+banner "Installing Required Packages..."
+pkg install git python python2 nodejs clang build-essential nmap xfce4 tigervnc apache2 php php-apache wget curl -y && success "Packages installed!" || error "Package installation failed!"
+
+# Step 5: Download themes and icons
+banner "Downloading Themes & Icons..."
+wget https://github.com/abidhasansojib/Termux-Desktop/releases/download/v1.0/Sweet-Dark-v40.tar.xz
+wget https://github.com/abidhasansojib/Termux-Desktop/releases/download/v1.0/Reversal-purple.tar.xz
+success "Themes downloaded!"
+
+# Step 6: Install themes and icons
+banner "Installing Themes & Icons..."
+mkdir -p ~/.themes ~/.icons
+mkdir -p /data/data/com.termux/files/usr/share/themes
+mkdir -p /data/data/com.termux/files/usr/share/icons
+
+tar -xvf Sweet-Dark-v40.tar.xz -C ~/.themes/
+tar -xvf Sweet-Dark-v40.tar.xz -C /data/data/com.termux/files/usr/share/themes/
+tar -xvf Reversal-purple.tar.xz -C ~/.icons/
+tar -xvf Reversal-purple.tar.xz -C /data/data/com.termux/files/usr/share/icons/
+rm Sweet-Dark-v40.tar.xz Reversal-purple.tar.xz
+success "Themes installed!"
+
+# Step 7: Apply themes using a temporary VNC session
+banner "Applying XFCE Themes..."
+vncserver :1
+export DISPLAY=:1
+xfconf-query -c xsettings -p /Net/ThemeName -s "Sweet-Dark-v40"
+xfconf-query -c xsettings -p /Net/IconThemeName -s "Reversal-purple"
+vncserver -kill :1
+success "Themes applied successfully!"
+
+# Step 8: Move all files in mypackages to $PREFIX/bin
+banner "Setting Up Executable Scripts..."
+mkdir -p $PREFIX/bin
+mv mypackages/* $PREFIX/bin/
+chmod +x $PREFIX/bin/*
+success "Scripts moved to bin!"
+
+# Step 9: Set VNC password
+banner "Configuring VNC Server..."
+echo "termux" | vncpasswd -f > ~/.vnc/passwd
+chmod 600 ~/.vnc/passwd
+success "VNC password set!"
+
+# Step 10: Remove old xstartup and add new one
+banner "Configuring VNC Startup File..."
+rm -f ~/.vnc/xstartup
+cat > ~/.vnc/xstartup <<EOL
+#!/data/data/com.termux/files/usr/bin/sh
+xfce4-session &
+EOL
+chmod +x ~/.vnc/xstartup
+success "VNC xstartup updated!"
+
+# Step 11: Install AcodeX server plugin
+banner "Installing AcodeX Plugin..."
+curl -sL https://raw.githubusercontent.com/bajrangCoder/acode-plugin-acodex/main/installServer.sh | bash && success "AcodeX installed!" || error "AcodeX installation failed!"
+
+# Step 12: Configure Apache2 with PHP
+banner "Configuring Apache2 for PHP..."
+mkdir -p $PREFIX/etc/apache2/conf.d
+cat > $PREFIX/etc/apache2/conf.d/php.conf <<EOL
+AddHandler php-script .php
+ServerName 0.0.0.0
+
+<IfModule dir_module>
+        DirectoryIndex index.php
+</IfModule>
+
+LoadModule php_module libexec/apache2/libphp.so
+
+<IfModule !mpm_worker_module>
+        LoadModule mpm_prefork_module libexec/apache2/mod_mpm_prefork.so
+</IfModule>
+EOL
+success "Apache2 configured!"
+
+# Step 13: Disable mpm_worker_module
+sed -i 's|LoadModule mpm_worker|#LoadModule mpm_worker|g' $PREFIX/etc/apache2/httpd.conf && success "Disabled mpm_worker_module!"
+
+# Step 14: Change Apache DocumentRoot
+banner "Setting Custom Apache DocumentRoot..."
+sed -i 's|DocumentRoot "/data/data/com.termux/files/usr/share/apache2/default-site/htdocs"|DocumentRoot "/data/data/com.termux/files/home/code/web"|' $PREFIX/etc/apache2/httpd.conf
+sed -i 's|<Directory "/data/data/com.termux/files/usr/share/apache2/default-site/htdocs">|<Directory "/data/data/com.termux/files/home/code/web">|' $PREFIX/etc/apache2/httpd.conf
+success "Apache DocumentRoot updated!"
+
+# Step 15: Replace bash.bashrc with Custom Config
+banner "Configuring System-wide Bash Settings..."
+
+# Remove existing bash.bashrc
+rm -f $PREFIX/etc/bash.bashrc && success "Old bash.bashrc removed!"
+
+# Add new custom bash.bashrc content
+cat > $PREFIX/etc/bash.bashrc <<EOL
+shopt -s histappend
+shopt -s histverify
+export HISTCONTROL=ignoreboth
+PROMPT_DIRTRIM=2
+
+PS1='\[\033[0;32m\]┌──(\[\033[1;34m\]\u\[\033[0;32m\])-[\[\033[0;1m\]\w\[\033[0;32m\]]  
+\[\033[0;32m\]└─\[\033[1;34m\]\$\[\033[0m\] '
+
+if [ -x /data/data/com.termux/files/usr/libexec/termux/command-not-found ]; then
+    command_not_found_handle() {
+        /data/data/com.termux/files/usr/libexec/termux/command-not-found "\$1"
+    }
+fi
+
+[ -r /data/data/com.termux/files/usr/share/bash-completion/bash_completion ] && \
+    . /data/data/com.termux/files/usr/share/bash-completion/bash_completion
+
+code
+EOL
+
+success "New bash.bashrc applied!"
+
+
+# Step 16: Add ServerName localhost:8080 to httpd.conf
+echo "ServerName localhost:8080" >> $PREFIX/etc/apache2/httpd.conf && success "Apache ServerName set to localhost:8080!"
+
+# Step 17: Restart Apache
+banner "Restarting Apache..."
+apachectl restart && success "Apache restarted!" || error "Apache restart failed!"
+
+# Step 18: Remove the motd file
+banner "Removing Termux MOTD..."
+rm -f $PREFIX/etc/motd && success "MOTD removed!"
+
+banner "🎉 Setup Complete!"
+echo -e "${GREEN}✔ Start VNC using: ${CYAN}vncserver :1${RESET}"
+echo -e "${GREEN}✔ Apache is accessible at: ${CYAN}http://localhost:8080${RESET}"
+echo -e "${GREEN}✔ To restart Apache manually: ${CYAN}apachectl restart${RESET}"
+echo -e "${GREEN}✔ Enjoy your fully set up Termux environment! 🚀${RESET}"
