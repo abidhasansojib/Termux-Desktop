@@ -1,1 +1,2 @@
-am start -n com.google.android.gm/.ConversationList
+am start -n com.google.android.gm/.ui.MailActivityGmail
+
